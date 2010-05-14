@@ -30,11 +30,15 @@ sub parse {
     $self->{buffer} .= $chunk;
 
     my $bpp = $self->bits_per_pixel;
-    return -1 if length($self->{buffer}) % ($bpp / 8);
+    my $block_size = $bpp / 8;
 
-    for (my $i = 0; $i < length($self->{buffer}) / $bpp; $i++) {
+    return -1 if length($self->{buffer}) % $block_size;
+
+    warn "length=" . length($self->{buffer});
+
+    for (my $i = 0; $i < length($self->{buffer}) / $block_size; $i++) {
         push @{$self->pixels},
-          substr($self->{buffer}, $i, $bpp);
+          substr($self->{buffer}, $i * $block_size, $block_size);
     }
 
     return 1;

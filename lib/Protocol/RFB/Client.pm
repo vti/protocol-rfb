@@ -22,7 +22,7 @@ sub new {
     $self->{state} = 'init';
 
     $self->{version} ||= '3.7';
-    $self->{encodings} ||= [qw/Raw CopyRect/];
+    $self->{encodings} ||= [qw/CopyRect Raw/];
 
     return $self;
 }

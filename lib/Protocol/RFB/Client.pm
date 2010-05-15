@@ -38,6 +38,7 @@ sub encodings { @_ > 1 ? $_[0]->{encodings} = $_[1] : $_[0]->{encodings} }
 sub width  { @_ > 1 ? $_[0]->{width}  = $_[1] : $_[0]->{width} }
 sub height { @_ > 1 ? $_[0]->{height} = $_[1] : $_[0]->{height} }
 sub pixel_format { @_ > 1 ? $_[0]->{pixel_format} = $_[1] : $_[0]->{pixel_format} }
+sub server_name { @_ > 1 ? $_[0]->{server_name} = $_[1] : $_[0]->{server_name} }
 
 sub handshake_cb {
     @_ > 1 ? $_[0]->{handshake_cb} = $_[1] : $_[0]->{handshake_cb};
@@ -47,7 +48,7 @@ sub _new_version_message {shift; Protocol::RFB::Message::Version->new(@_)}
 sub _new_security_message {shift; Protocol::RFB::Message::Security->new(@_)}
 sub _new_authentication_message {shift; Protocol::RFB::Message::Authentication->new(@_)}
 sub _new_security_result_message {shift; Protocol::RFB::Message::SecurityResult->new(@_)}
-sub _new_init_message {shift; Protocol::RFB::Message::Init->new(@_)}
+sub _new_init_message { shift; Protocol::RFB::Message::Init->new(@_); }
 sub _new_server_message {shift; Protocol::RFB::Message::Server->new(@_)}
 
 sub write_cb { @_ > 1 ? $_[0]->{write_cb} = $_[1] : $_[0]->{write_cb} }
@@ -124,15 +125,18 @@ sub parse {
             $self->width($res->width);
             $self->height($res->height);
 
+            $self->server_name($res->server_name);
+
             $self->pixel_format($res->format);
 
             $self->state('ready');
-            $self->handshake_cb->($self);
 
             my $pixel_format = $res->format;
             $self->write_cb->($self, $pixel_format);
 
             $self->set_encodings($self->encodings);
+
+            $self->handshake_cb->($self);
 
             return 1;
         }

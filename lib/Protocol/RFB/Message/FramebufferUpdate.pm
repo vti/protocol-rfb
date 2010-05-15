@@ -7,6 +7,7 @@ use base 'Protocol::RFB::Message';
 
 use Protocol::RFB::Encodings;
 use Protocol::RFB::Encoding::Raw;
+use Protocol::RFB::Encoding::CopyRect;
 
 sub new {
     my $self = shift->SUPER::new(@_);
@@ -84,15 +85,21 @@ sub parse {
             $rectangle->{data} = $self->_new_encoding_raw->parse(
                 substr($self->{buffer}, $self->{offset}, $rectangle_length));
 
-            push @{$self->rectangles}, $rectangle;
-
             $self->{offset} += $rectangle_length;
+        }
+        elsif ($rectangle->{encoding} eq 'CopyRect') {
+            $rectangle->{data} = $self->_new_encoding_copy_rect->parse(
+                substr($self->{buffer}, $self->{offset}, 4));
 
-            $self->state('rectangle_header');
+            $self->{offset} += 4;
         }
         else {
             die 'Unsupported encoding';
         }
+
+        push @{$self->rectangles}, $rectangle;
+
+        $self->state('rectangle_header');
     }
 
     $self->state('done');
@@ -102,8 +109,10 @@ sub parse {
 }
 
 sub _new_encoding_raw {my $self = shift;
-    return Protocol::RFB::Encoding::Raw->new(pixel_format =>
+    Protocol::RFB::Encoding::Raw->new(pixel_format =>
         $self->{pixel_format});
 }
+
+sub _new_encoding_copy_rect { Protocol::RFB::Encoding::CopyRect->new }
 
 1;

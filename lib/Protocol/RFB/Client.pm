@@ -22,7 +22,7 @@ sub new {
     $self->{state} = 'init';
 
     $self->{version} ||= '3.7';
-    $self->{encodings} ||= ['Raw'];
+    $self->{encodings} ||= [qw/Raw CopyRect/];
 
     return $self;
 }
@@ -201,6 +201,8 @@ sub set_encodings {
     my $m = Protocol::RFB::Message::SetEncodings->new(
         encodings => $encodings
     );
+
+    warn 'Send encodings';
 
     $self->write_cb->($self, $m->to_string);
 }

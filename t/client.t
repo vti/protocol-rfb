@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 16;
+use Test::More tests => 18;
 
 use_ok('Protocol::RFB::Client');
 
@@ -42,10 +42,16 @@ is($client->state, 'ready');
 # Server sends bell
 ok($client->parse(pack('C', 2)));
 
-# Server sends framebuffer update
+# Server sends framebuffer update with Raw encoding
 my $update = pack('CCnnnnnNCCCC', 0, 0, 1, 5, 14, 1, 1, 0, 128, 255, 128, 255);
 ok($client->parse($update . $update . $update));
 
 ok($client->parse(substr($update, 0, 5)));
 ok($client->parse(substr($update, 5) . substr($update, 0, 3)));
 ok($client->parse(substr($update, 3)));
+
+# Server sends framebuffer update with CopyRect encoding
+$client->framebuffer_update_cb(
+    sub { is_deeply($_[1]->rectangles->[0]->{data}, [128, 255]) });
+$update = pack('CCnnnnnNnn', 0, 0, 1, 5, 14, 1, 1, 1, 128, 255);
+ok($client->parse($update));

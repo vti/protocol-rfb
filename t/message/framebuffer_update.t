@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 72;
+use Test::More tests => 81;
 
 use_ok('Protocol::RFB::Message::FramebufferUpdate');
 use Protocol::RFB::Message::PixelFormat;
@@ -177,6 +177,30 @@ is_deeply(
             height   => 2,
             encoding => 'Raw',
             data     => [[0, 0, 0], [0, 0, 0]]
+        },
+    ]
+);
+
+# CopyRect encoding
+$m =
+  Protocol::RFB::Message::FramebufferUpdate->new(
+    pixel_format => $pixel_format);
+ok($m->parse(pack('C', 0)));
+ok(!$m->is_done);
+ok($m->parse(pack('C', 0)));
+ok(!$m->is_done);
+ok($m->parse(pack('n', 1)));
+ok(!$m->is_done);
+ok($m->parse(pack('nnnnNnn', 5, 14, 1, 2, 1, 20, 10)));
+ok($m->is_done);
+is_deeply(
+    $m->rectangles,
+    [   {   x        => 5,
+            y        => 14,
+            width    => 1,
+            height   => 2,
+            encoding => 'CopyRect',
+            data     => [20, 10]
         },
     ]
 );

@@ -12,6 +12,7 @@ use Protocol::RFB::Message::Init;
 use Protocol::RFB::Message::Server;
 use Protocol::RFB::Message::FramebufferUpdateRequest;
 use Protocol::RFB::Message::SetEncodings;
+use Protocol::RFB::Message::PointerEvent;
 
 sub new {
     my $class = shift;

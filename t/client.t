@@ -1,9 +1,9 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 use strict;
 use warnings;
 
-use Test::More tests => 12;
+use Test::More tests => 16;
 
 use_ok('Protocol::RFB::Client');
 
@@ -32,7 +32,7 @@ is($client->state, 'handshake');
 ok($client->parse(pack('n', 800)));
 ok($client->parse(pack('n', 600)));
 ok( $client->parse(
-        pack('ccccnnncccc3', 16, 24, 0, 1, 255, 255, 255, 8, 16, 0, 0)
+        pack('ccccnnncccc3', 32, 32, 0, 1, 255, 255, 255, 8, 16, 0, 0)
     )
 );
 ok($client->parse(pack('N', 3)));
@@ -41,3 +41,11 @@ is($client->state, 'ready');
 
 # Server sends bell
 ok($client->parse(pack('C', 2)));
+
+# Server sends framebuffer update
+my $update = pack('CCnnnnnNCCCC', 0, 0, 1, 5, 14, 1, 1, 0, 128, 255, 128, 255);
+ok($client->parse($update . $update . $update));
+
+ok($client->parse(substr($update, 0, 5)));
+ok($client->parse(substr($update, 5) . substr($update, 0, 3)));
+ok($client->parse(substr($update, 3)));

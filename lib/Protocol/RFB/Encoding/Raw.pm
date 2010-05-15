@@ -3,45 +3,58 @@ package Protocol::RFB::Encoding::Raw;
 use strict;
 use warnings;
 
-use base 'Protocol::RFB::Encoding';
+my $IS_BIG_ENDIAN = unpack('h*', pack('s', 1)) =~ /01/ ? 1 : 0;
 
 sub new {
-    my $self = shift->SUPER::new(@_);
+    my $class = shift;
 
-    die 'bits_per_pixel is required' unless $self->{bits_per_pixel};
+    my $self = {@_};
+    bless $self, $class;
 
-    $self->{pixels} = [];
+    die 'pixel_format is required' unless $self->{pixel_format};
 
     return $self;
 }
 
-sub pixels { @_ > 1 ? $_[0]->{pixels} = $_[1] : $_[0]->{pixels} }
-
-sub bits_per_pixel {
-    @_ > 1 ? $_[0]->{bits_per_pixel} = $_[1] : $_[0]->{bits_per_pixel};
-}
-
 sub parse {
     my $self = shift;
-    my ($chunk) = @_;
+    my $chunk = $_[0];
 
-    return unless defined $chunk && length $chunk > 0;
+    my $pixel_format = $self->{pixel_format};
 
-    $self->{buffer} .= $chunk;
+    my $bpp = $pixel_format->bits_per_pixel;
 
-    my $bpp = $self->bits_per_pixel;
-    my $block_size = $bpp / 8;
+    my $unpack =
+        ($pixel_format->big_endian_flag && !$IS_BIG_ENDIAN)
+      ? $bpp == 32
+          ? 'N'
+          : $bpp == 16 ? 'n'
+        : 'C'
+      : $bpp == 32 ? 'L'
+      : $bpp == 16 ? 'S'
+      :              'C';
 
-    return -1 if length($self->{buffer}) % $block_size;
+    my @pixels = unpack("$unpack*", $chunk);
 
-    warn "length=" . length($self->{buffer});
+    my $red_shift = $pixel_format->red_shift;
+    my $red_max   = $pixel_format->red_max;
 
-    for (my $i = 0; $i < length($self->{buffer}) / $block_size; $i++) {
-        push @{$self->pixels},
-          substr($self->{buffer}, $i * $block_size, $block_size);
+    my $green_shift = $pixel_format->green_shift;
+    my $green_max   = $pixel_format->green_max;
+
+    my $blue_shift = $pixel_format->blue_shift;
+    my $blue_max   = $pixel_format->blue_max;
+
+    my $parsed = [];
+    foreach my $pixel (@pixels) {
+        my $red   = ($pixel >> $red_shift) & $red_max;
+        my $green = ($pixel >> $green_shift) & $green_max;
+        my $blue  = ($pixel >> $blue_shift) & $blue_max;
+
+        push @$parsed, [$red, $green, $blue];
     }
 
-    return 1;
+    return $parsed;
 }
 
 1;

@@ -40,10 +40,13 @@ sub parse {
         $message = $self->{message} = $class->new(@{$self->{args}});
     }
 
-    return unless $message->parse($chunk);
+    my $parsed = $message->parse($chunk);
+    return unless defined $parsed;
 
-    return 1;
+    return $parsed;
 }
+
+sub submessage { shift->{message} }
 
 sub name {
     my $self = shift;

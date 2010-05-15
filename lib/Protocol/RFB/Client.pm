@@ -37,6 +37,7 @@ sub encodings { @_ > 1 ? $_[0]->{encodings} = $_[1] : $_[0]->{encodings} }
 
 sub width  { @_ > 1 ? $_[0]->{width}  = $_[1] : $_[0]->{width} }
 sub height { @_ > 1 ? $_[0]->{height} = $_[1] : $_[0]->{height} }
+sub pixel_format { @_ > 1 ? $_[0]->{pixel_format} = $_[1] : $_[0]->{pixel_format} }
 
 sub handshake_cb {
     @_ > 1 ? $_[0]->{handshake_cb} = $_[1] : $_[0]->{handshake_cb};
@@ -95,18 +96,15 @@ sub parse {
         my $req;
         my $res_name = $res->name;
         if ($res_name eq 'version') {
-            warn "parsing version";
             $req = $self->_new_version_message(major => 3, minor => 7);
             $self->{handshake_res} = $self->_new_security_message;
         }
         elsif ($res_name eq 'security') {
-            warn "parsing security";
             # Check was kind of security is available
             $req = $self->_new_security_message(type => 2);
             $self->{handshake_res} = $self->_new_authentication_message;
         }
         elsif ($res_name eq 'authentication') {
-            warn "parsing authentication";
             $req = $self->_new_authentication_message(
                 challenge => $res->challenge,
                 password  => $self->password
@@ -114,7 +112,6 @@ sub parse {
             $self->{handshake_res} = $self->_new_security_result_message;
         }
         elsif ($res_name eq 'security_result') {
-            warn "parsing securityresult";
             return $self->error_cb($res->error) if $res->error;
 
             # Initialization
@@ -129,9 +126,6 @@ sub parse {
 
             $self->pixel_format($res->format);
 
-            use Data::Dumper;
-            warn Dumper $self;
-
             $self->state('ready');
             $self->handshake_cb->($self);
 
@@ -139,9 +133,6 @@ sub parse {
             $self->write_cb->($self, $pixel_format);
 
             $self->set_encodings($self->encodings);
-
-            #$self->framebuffer_update_request(0, 0, $res->width, $res->height, 0);
-            $self->framebuffer_update_request(10, 10, 100, 100, 0);
 
             return 1;
         }
@@ -154,51 +145,22 @@ sub parse {
 
     # Message from server
     elsif ($state eq 'ready') {
-        my $message = $self->{server_message};
-        if (!$message || $message->is_done) {
-            warn 'New data!';
-            $message = $self->{server_message} = $self->_new_server_message(
-                pixel_format => $self->pixel_format);
-        }
-
-        return unless $message->parse($chunk);
-        return 1 unless $message->is_done;
-
-        if ($message->name eq 'framebuffer_update') {
-            my $rectangles = $message->{message}->rectangles;
-            foreach my $rectangle (@$rectangles) {
-                use Imager;
-                my $img = Imager->new(xsize => $rectangle->{width}, ysize =>
-                    $rectangle->{height});
-
-                warn "x=$rectangle->{x}";
-                warn "y=$rectangle->{y}";
-                warn "w=$rectangle->{width}";
-                warn "h=$rectangle->{height}";
-
-                my $i = 0;
-                my $pixels = $rectangle->{data};
-                foreach my $pixel (@$pixels) {
-                    my $x = $i % $rectangle->{width};
-                    my $y = int($i / $rectangle->{width});
-                warn "x=$x";
-                warn "y=$y";
-                    my $red = (unpack('N', $pixel) >> $self->red_shift) & $self->red_max;
-                    my $green = (unpack('N', $pixel) >> $self->green_shift) & $self->green_max;
-                    my $blue = (unpack('N', $pixel) >> $self->blue_shift) & $self->blue_max;
-                    warn "pixel=$red $green $blue";
-                    $img->setpixel(x => $x, y => $y, color => [$red, $green, $blue]);
-                    $i++;
-                }
-                $img->write(file => 'foo.jpg', type => 'jpeg') or die $img->errstr;
-                undef $img;
+        while (length($chunk) > 0) {
+            my $message = $self->{server_message};
+            if (!$message || $message->is_done) {
+                $message = $self->{server_message} = $self->_new_server_message(
+                    pixel_format => $self->pixel_format);
             }
+
+            my $parsed = $message->parse($chunk);
+            return unless defined $parsed;
+            return 1 unless $message->is_done;
+            $chunk = length($chunk) > $parsed ? substr($chunk, $parsed) : "";
+
+            my $cb = $message->name . '_cb';
+
+            $self->$cb->($self, $message->submessage) if $self->$cb;
         }
-
-        my $cb = $message->name . '_cb';
-        warn "cb=" . $cb;
-
-        $self->$cb->($self, $message) if $self->$cb;
 
         #$self->framebuffer_update_request(10, 10, 100, 100, 1);
 

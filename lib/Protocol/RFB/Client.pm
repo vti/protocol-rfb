@@ -202,7 +202,18 @@ sub set_encodings {
         encodings => $encodings
     );
 
-    warn 'Send encodings';
+    $self->write_cb->($self, $m->to_string);
+}
+
+sub pointer_event {
+    my $self = shift;
+    my ($x, $y, $mask) = @_;
+
+    my $m = Protocol::RFB::Message::PointerEvent->new(
+        x           => $x,
+        y           => $y,
+        button_mask => $mask
+    );
 
     $self->write_cb->($self, $m->to_string);
 }

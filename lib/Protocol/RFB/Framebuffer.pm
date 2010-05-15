@@ -24,8 +24,6 @@ sub reset {
     my $self = shift;
 
     $self->{buffer} = [];
-    push @{$self->{buffer}}, [0, 0, 0]
-      for (1 .. $self->{width} * $self->{height});
 }
 
 sub buffer { @_ > 1 ? $_[0]->{buffer} = $_[1] : $_[0]->{buffer} }

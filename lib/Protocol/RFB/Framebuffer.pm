@@ -40,17 +40,20 @@ sub set_rectangle {
     my $self = shift;
     my ($start_x, $start_y, $width, $height, $data) = @_;
 
+    my $max_x = $self->{width} + $self->{x};
+    my $max_y = $self->{height} + $self->{y};
     for (my $i = 0; $i < @$data; $i++) {
-        my $x = $start_x + $i % $width;
-        my $y = $start_y + int($i / $width);
+       my $x = $start_x + $i % $width;
+       my $y = $start_y + int($i / $width);
 
-        if (   $x >= $self->x
-            && $x < $self->width + $self->x
-            && $y >= $self->y
-            && $y < $self->height + $self->y)
-        {
-            $self->{buffer}->[($y - $self->y) * $self->width + $x - $self->x] = $data->[$i];
-        }
+       if (   $x >= $self->{x}
+           && $x < $max_x
+           && $y >= $self->{y}
+           && $y < $max_y
+       )
+       {
+           $self->{buffer}->[($y - $self->{y}) * $self->{width} + $x - $self->{x}] = $data->[$i];
+       }
     }
 }
 

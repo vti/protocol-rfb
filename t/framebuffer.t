@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 9;
+use Test::More tests => 10;
 
 use_ok('Protocol::RFB::Framebuffer');
 
@@ -37,6 +37,13 @@ $b->set_rectangle(
 );
 is_deeply($b->buffer, [
     undef, undef,
+    undef, [5, 5, 5],
+    undef, [5, 5, 5]
+]);
+
+$b->set_rectangle(0, 0, 1, 1, [[0, 0, 0]]);
+is_deeply($b->buffer, [
+    [0, 0, 0], undef,
     undef, [5, 5, 5],
     undef, [5, 5, 5]
 ]);

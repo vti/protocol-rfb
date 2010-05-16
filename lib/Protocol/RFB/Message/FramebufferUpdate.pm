@@ -51,6 +51,8 @@ sub parse {
     my $number = $self->{number};
     my $ri = scalar @{$self->rectangles};
 
+    my $bytes_per_pixel = $self->{pixel_format}->bits_per_pixel / 8;
+
     for (my $i = $ri; $i < $number; $i++) {
         if ($self->state eq 'rectangle_header') {
             return $chunk_length unless length($self->{buffer}) - $self->{offset} >= 12;
@@ -74,9 +76,7 @@ sub parse {
         my $rectangle = $self->{rectangle};
         if ($rectangle->{encoding} eq 'Raw') {
             my $rectangle_length =
-                $rectangle->{width}
-              * $rectangle->{height}
-              * ($self->{pixel_format}->bits_per_pixel / 8);
+              $rectangle->{width} * $rectangle->{height} * $bytes_per_pixel;
 
             return $chunk_length
               unless length($self->{buffer}) - $self->{offset}

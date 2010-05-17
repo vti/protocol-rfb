@@ -6,6 +6,7 @@ use strict;
 use warnings;
 
 use Getopt::Long 'GetOptions';
+use File::Basename;
 
 my $ADDRESS  = 'localhost';
 my $PORT     = 5900;
@@ -28,8 +29,9 @@ GetOptions(
     "image=s"    => \$IMAGE
 );
 
+my $basename = File::Basename::basename $0;
 my $USAGE =<<"EOF";
-usage: $0 --password <password>
+usage: $basename --password <password>
 
 Other options:
 

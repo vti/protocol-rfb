@@ -9,9 +9,11 @@ sub new {
     my $self = {@_};
     bless $self, $class;
 
-    $self->{buffer} = '';
+    $self->{data} = [];
 
     return $self;
 }
+
+sub data { @_ > 1 ? $_[0]->{data} = $_[1] : $_[0]->{data} }
 
 1;

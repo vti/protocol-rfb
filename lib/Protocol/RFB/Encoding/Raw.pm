@@ -3,14 +3,14 @@ package Protocol::RFB::Encoding::Raw;
 use strict;
 use warnings;
 
+use base 'Protocol::RFB::Encoding';
+
 my $IS_BIG_ENDIAN = unpack('h*', pack('s', 1)) =~ /01/ ? 1 : 0;
 
 sub new {
-    my $class = shift;
+    my $self = shift->SUPER::new(@_);
 
-    my $self = {@_};
-    bless $self, $class;
-
+    die 'rectangle is required' unless $self->{rectangle};
     die 'pixel_format is required' unless $self->{pixel_format};
 
     return $self;
@@ -23,6 +23,12 @@ sub parse {
     my $pixel_format = $self->{pixel_format};
 
     my $bpp = $pixel_format->bits_per_pixel;
+
+    my $rectangle_length =
+      $self->{rectangle}->{width} * $self->{rectangle}->{height} * ($bpp / 8);
+
+    return unless length($chunk) >= $rectangle_length;
+    $chunk = substr($chunk, 0, $rectangle_length);
 
     my $unpack =
         ($pixel_format->big_endian_flag && !$IS_BIG_ENDIAN)
@@ -54,7 +60,9 @@ sub parse {
         push @$parsed, [$red, $green, $blue];
     }
 
-    return $parsed;
+    $self->data($parsed);
+
+    return $rectangle_length;
 }
 
 1;

@@ -3,20 +3,17 @@ package Protocol::RFB::Encoding::CopyRect;
 use strict;
 use warnings;
 
-sub new {
-    my $class = shift;
-
-    my $self = {@_};
-    bless $self, $class;
-
-    return $self;
-}
+use base 'Protocol::RFB::Encoding';
 
 sub parse {
     my $self = shift;
     my $chunk = $_[0];
 
-    return [unpack("nn", $chunk)];
+    return unless length($chunk) == 4;
+
+    $self->data([unpack("nn", $chunk)]);
+
+    return 4;
 }
 
 1;

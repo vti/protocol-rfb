@@ -74,28 +74,20 @@ sub parse {
         }
 
         my $rectangle = $self->{rectangle};
-        if ($rectangle->{encoding} eq 'Raw') {
-            my $rectangle_length =
-              $rectangle->{width} * $rectangle->{height} * $bytes_per_pixel;
 
-            return $chunk_length
-              unless length($self->{buffer}) - $self->{offset}
-                  >= $rectangle_length;
+        my $encoding_class = "Protocol::RFB::Encoding::$rectangle->{encoding}";
 
-            $rectangle->{data} = $self->_new_encoding_raw->parse(
-                substr($self->{buffer}, $self->{offset}, $rectangle_length));
+        my $encoding = $encoding_class->new(
+            pixel_format => $self->{pixel_format},
+            rectangle    => $rectangle
+        );
 
-            $self->{offset} += $rectangle_length;
-        }
-        elsif ($rectangle->{encoding} eq 'CopyRect') {
-            $rectangle->{data} = $self->_new_encoding_copy_rect->parse(
-                substr($self->{buffer}, $self->{offset}, 4));
+        my $bytes_parsed = $encoding->parse(substr($self->{buffer}, $self->{offset}));
+        return $chunk_length unless $bytes_parsed;
 
-            $self->{offset} += 4;
-        }
-        else {
-            die 'Unsupported encoding';
-        }
+        $self->{offset} += $bytes_parsed;
+
+        $rectangle->{data} = $encoding->data;
 
         push @{$self->rectangles}, $rectangle;
 
@@ -107,12 +99,5 @@ sub parse {
     my $leftovers = length($self->{buffer}) - $self->{offset};
     return $chunk_length - $leftovers;
 }
-
-sub _new_encoding_raw {my $self = shift;
-    Protocol::RFB::Encoding::Raw->new(pixel_format =>
-        $self->{pixel_format});
-}
-
-sub _new_encoding_copy_rect { Protocol::RFB::Encoding::CopyRect->new }
 
 1;

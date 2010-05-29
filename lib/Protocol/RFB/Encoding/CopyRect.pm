@@ -9,7 +9,7 @@ sub parse {
     my $self = shift;
     my $chunk = $_[0];
 
-    return unless length($chunk) == 4;
+    return unless length($chunk) >= 4;
 
     $self->data([unpack("nn", $chunk)]);
 

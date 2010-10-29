@@ -13,17 +13,18 @@ sub parse {
     my $self = shift;
     my ($chunk) = @_;
 
-    return unless defined $chunk;
+    return unless defined $chunk && $chunk ne '';
 
     $self->{buffer} .= $chunk;
 
-    return 1 unless length($self->{buffer}) > 4;
+    return 1 unless length($self->{buffer}) >= 4;
 
     my $length = unpack('I', substr($self->{buffer}, 0, 4));
     return 1 unless length($self->{buffer}) == 4 + $length;
 
     $self->reason(substr($self->{buffer}, 4, $length));
-    $self->state('done');
+
+    $self->done;
 
     return 1;
 }

@@ -3,6 +3,8 @@ package Protocol::RFB::Client;
 use strict;
 use warnings;
 
+use constant DEBUG => $ENV{PROTOCOL_RFB_DEBUG} ? 1 : 0;
+
 use Protocol::RFB::Message::Version;
 use Protocol::RFB::Message::Security;
 use Protocol::RFB::Message::Authentication;
@@ -74,11 +76,27 @@ sub server_cut_text_cb {
       : $_[0]->{server_cut_text_cb};
 }
 
+sub error {
+    my $self = shift;
+    my $error = shift;
+
+    return $self->{error} unless $error;
+
+    $self->{error} = $error;
+    $self->error_cb->($self, $error);
+
+    return $self;
+}
+
 sub parse {
     my $self = shift;
     my ($chunk) = @_;
 
+    warn '< ' . unpack 'h*' => $chunk if DEBUG;
+
     if ($self->state eq 'init') {
+        warn 'Initialization state' if DEBUG;
+
         $self->state('handshake');
 
         $self->{handshake_res} = $self->_new_version_message;
@@ -87,6 +105,8 @@ sub parse {
     my $state = $self->state;
 
     if ($state eq 'handshake') {
+        warn 'Handshake state' if DEBUG;
+
         my $res = $self->{handshake_res};
 
         # Error
@@ -98,15 +118,21 @@ sub parse {
         my $req;
         my $res_name = $res->name;
         if ($res_name eq 'version') {
+            warn 'Received version' if DEBUG;
+
             $req = $self->_new_version_message(major => 3, minor => 7);
             $self->{handshake_res} = $self->_new_security_message;
         }
         elsif ($res_name eq 'security') {
-            # Check was kind of security is available
+            warn 'Received security type' if DEBUG;
+
+            # Check what kind of security is available
             $req = $self->_new_security_message(type => 2);
             $self->{handshake_res} = $self->_new_authentication_message;
         }
         elsif ($res_name eq 'authentication') {
+            warn 'Received authentication' if DEBUG;
+
             $req = $self->_new_authentication_message(
                 challenge => $res->challenge,
                 password  => $self->password
@@ -114,13 +140,17 @@ sub parse {
             $self->{handshake_res} = $self->_new_security_result_message;
         }
         elsif ($res_name eq 'security_result') {
-            return $self->error_cb($res->error) if $res->error;
+            warn 'Received security result' if DEBUG;
+
+            return $self->error($res->error) if $res->error;
 
             # Initialization
             $req = $self->_new_init_message;
             $self->{handshake_res} = $self->_new_init_message;
         }
         elsif ($res_name eq 'init') {
+            warn 'Received settings' if DEBUG;
+
             delete $self->{handshake_res};
 
             $self->width($res->width);
@@ -133,6 +163,7 @@ sub parse {
             $self->state('ready');
 
             my $pixel_format = $res->format;
+
             $self->write_cb->($self, $pixel_format);
 
             $self->set_encodings($self->encodings);
@@ -141,6 +172,8 @@ sub parse {
 
             return 1;
         }
+
+        warn '> ' . $req->to_hex . ' (' . $req->name . ')' if DEBUG;
 
         # Send request
         $self->write_cb->($self, $req->to_string) if $req;
@@ -159,7 +192,9 @@ sub parse {
 
             my $parsed = $message->parse($chunk);
             return unless defined $parsed;
+
             return 1 unless $message->is_done;
+
             $chunk = length($chunk) > $parsed ? substr($chunk, $parsed) : "";
 
             my $cb = $message->name . '_cb';

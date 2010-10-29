@@ -12,9 +12,12 @@ use overload '""' => \&to_string;
 sub width  { @_ > 1 ? $_[0]->{width}  = $_[1] : $_[0]->{width} }
 sub height { @_ > 1 ? $_[0]->{height} = $_[1] : $_[0]->{height} }
 sub format { @_ > 1 ? $_[0]->{format} = $_[1] : $_[0]->{format} }
-sub server_name   { @_ > 1 ? $_[0]->{server_name}   = $_[1] : $_[0]->{server_name} }
 
-sub name { 'init' }
+sub server_name {
+    @_ > 1 ? $_[0]->{server_name} = $_[1] : $_[0]->{server_name};
+}
+
+sub name {'init'}
 
 sub parse {
     my $self = shift;
@@ -37,7 +40,8 @@ sub parse {
     my $server_name_length =
       int(join('', unpack('C4', substr($self->{buffer}, 20, 4))));
 
-    return 1 unless length($self->{buffer}) == 2 + 2 + 16 + 4 + $server_name_length;
+    return 1
+      unless length($self->{buffer}) == 2 + 2 + 16 + 4 + $server_name_length;
 
     $self->server_name(substr($self->{buffer}, 24));
 

@@ -24,9 +24,17 @@ sub parse {
     my $result = join('', unpack('C4', substr($self->{buffer}, 0, 4)));
     if (int($result)) {
         my $error = Protocol::RFB::Message::Error->new;
-        return unless $error->parse(substr($self->{buffer}, 4));
-        return 1 unless $error->is_done;
-        $self->error($error->reason);
+        my $buffer = substr($self->{buffer}, 4);
+
+        if (length $buffer) {
+            return unless $error->parse($buffer);
+            return 1 unless $error->is_done;
+
+            $self->error($error->reason);
+        }
+        else {
+            $self->error('Authentication failed');
+        }
     }
 
     $self->state('done');

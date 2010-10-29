@@ -10,9 +10,9 @@ use Crypt::DES;
 use overload '""' => \&to_string;
 
 sub challenge { @_ > 1 ? $_[0]->{challenge} = $_[1] : $_[0]->{challenge} }
-sub password       { @_ > 1 ? $_[0]->{password}       = $_[1] : $_[0]->{password} }
+sub password  { @_ > 1 ? $_[0]->{password}  = $_[1] : $_[0]->{password} }
 
-sub name { 'authentication' }
+sub name {'authentication'}
 
 sub parse {
     my $self = shift;
@@ -26,7 +26,7 @@ sub parse {
 
     $self->challenge($self->{buffer});
 
-    $self->state('done');
+    $self->done;
 
     return 1;
 }

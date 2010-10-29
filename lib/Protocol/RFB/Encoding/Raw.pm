@@ -10,14 +10,14 @@ my $IS_BIG_ENDIAN = unpack('h*', pack('s', 1)) =~ /01/ ? 1 : 0;
 sub new {
     my $self = shift->SUPER::new(@_);
 
-    die 'rectangle is required' unless $self->{rectangle};
+    die 'rectangle is required'    unless $self->{rectangle};
     die 'pixel_format is required' unless $self->{pixel_format};
 
     return $self;
 }
 
 sub parse {
-    my $self = shift;
+    my $self  = shift;
     my $chunk = $_[0];
 
     my $pixel_format = $self->{pixel_format};
@@ -51,13 +51,24 @@ sub parse {
     my $blue_shift = $pixel_format->blue_shift;
     my $blue_max   = $pixel_format->blue_max;
 
-    my $parsed = [];
-    foreach my $pixel (@pixels) {
-        my $red   = ($pixel >> $red_shift) & $red_max;
-        my $green = ($pixel >> $green_shift) & $green_max;
-        my $blue  = ($pixel >> $blue_shift) & $blue_max;
+    my $cache = {};
 
-        push @$parsed, [$red, $green, $blue];
+    my $parsed = [];
+    my $color;
+    foreach my $pixel (@pixels) {
+        if (exists $cache->{$pixel}) {
+            $color = $cache->{$pixel};
+        }
+        else {
+            $color = [
+                ($pixel >> $red_shift) & $red_max,
+                ($pixel >> $green_shift) & $green_max,
+                ($pixel >> $blue_shift) & $blue_max
+            ];
+            $cache->{$pixel} = $color;
+        }
+
+        push @$parsed, $color;
     }
 
     $self->data($parsed);

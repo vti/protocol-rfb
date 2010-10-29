@@ -2,21 +2,27 @@
 
 # Copyright (C) 2010, Viacheslav Tykhanovskyi
 
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
 use strict;
 use warnings;
 
 use Getopt::Long 'GetOptions';
 use File::Basename;
 
-my $ADDRESS  = 'localhost';
-my $PORT     = 5900;
+my $ADDRESS = 'localhost';
+my $PORT    = 5900;
 my $PASSWORD;
 
-my $X      = 0;
-my $Y      = 0;
+my $X = 0;
+my $Y = 0;
 my $WIDTH;
 my $HEIGHT;
-my $IMAGE  = 'screenshot.png';
+my $IMAGE = 'screenshot.png';
+
+my $img;
+my $offset = 0;
 
 GetOptions(
     "address=s"  => \$ADDRESS,
@@ -30,7 +36,7 @@ GetOptions(
 );
 
 my $basename = File::Basename::basename $0;
-my $USAGE =<<"EOF";
+my $USAGE    = <<"EOF";
 usage: $basename --password <password>
 
 Other options:
@@ -51,9 +57,9 @@ EOF
 die $USAGE unless $PASSWORD;
 
 use Protocol::RFB::Client;
-use Protocol::RFB::Framebuffer;
 
 use Imager;
+use Imager::Fill;
 
 use IO::Socket::INET;
 use IO::Poll qw/POLLIN/;
@@ -66,7 +72,13 @@ my $socket = IO::Socket::INET->new(
     Type     => SOCK_STREAM
 );
 
-die "Can't connect to $ADDRESS:$PORT" unless $socket->connected;
+$socket->blocking(0);
+
+my $retry = 3;
+while (!$socket->connected) {
+    sleep 1;
+    $retry-- || die "Can't connect to $ADDRESS:$PORT";
+}
 
 my $vnc = Protocol::RFB::Client->new(password => $PASSWORD);
 
@@ -78,22 +90,21 @@ $vnc->write_cb(
     }
 );
 
-$vnc->error_cb(sub {});
+$vnc->error_cb(
+    sub {
+        my $self  = shift;
+        my $error = shift;
 
-my $framebuffer;
+        warn 'Error: ' . $error;
+    }
+);
+
 $vnc->handshake_cb(
     sub {
         my ($self) = @_;
 
         $WIDTH  ||= $self->width;
         $HEIGHT ||= $self->height;
-
-        $framebuffer = Protocol::RFB::Framebuffer->new(
-            width  => $WIDTH,
-            height => $HEIGHT,
-            x      => $X,
-            y      => $Y
-        );
 
         warn 'name=' . $self->server_name;
         warn 'width=' . $self->width;
@@ -111,33 +122,36 @@ $vnc->framebuffer_update_cb(
 
         foreach my $rectangle (@$rectangles) {
             if ($rectangle->{encoding} eq 'Raw') {
-                $framebuffer->set_rectangle(
-                    $rectangle->{x},     $rectangle->{y},
-                    $rectangle->{width}, $rectangle->{height},
-                    $rectangle->{data}
-                );
+                $offset += $rectangle->{height} * $rectangle->{width};
+
+                print int(100 * $offset / ($WIDTH * $HEIGHT)) . "%...";
+
+                $img ||= Imager->new(xsize => $WIDTH, ysize => $HEIGHT);
+
+                my $sub_img = Imager->new(xsize => $rectangle->{width}, ysize => $rectangle->{height});
+                foreach my $y (0 .. $rectangle->{height}) {
+                    foreach my $x (0 .. $rectangle->{width}) {
+                        my $pixel =
+                          $rectangle->{data}->[$x + $y * $rectangle->{width}];
+
+                        $sub_img->setpixel(x => $x, y => $y, color => $pixel);
+                    }
+                }
+
+                $img->paste(left => $rectangle->{x}, top => $rectangle->{y}, img => $sub_img);
+
+                print "\n";
             }
             else {
                 warn 'NEW ENCODING!';
             }
         }
 
-        if ($framebuffer->size >= $WIDTH * $HEIGHT) {
-            warn 'Creating an image';
-
-            my $img = Imager->new(xsize => $WIDTH, ysize => $HEIGHT);
-            for (my $i = 0; $i < @{$framebuffer->buffer}; $i++) {
-               my $x = $i % $WIDTH;
-               my $y = int($i / $WIDTH);
-
-               my $pixel =  $framebuffer->buffer->[$i];
-
-               $img->setpixel(x => $x, y => $y, color => $pixel);
-            }
-
+        if ($offset >= $WIDTH * $HEIGHT) {
+            warn "Saving to $IMAGE...";
             $img->write(file => $IMAGE, type => 'png') or die $img->errstr;
 
-            exit;
+            $self->done;
         }
     }
 );
@@ -152,6 +166,12 @@ while (1) {
     if (my @read = $poll->handles(POLLIN)) {
         my $rb = sysread($socket, my $chunk, 1024);
 
+        die "Error: $!" unless defined $rb;
+
         $vnc->parse($chunk) if $rb > 0;
+
+        last if $vnc->error;
+
+        last if $vnc->is_done;
     }
 }

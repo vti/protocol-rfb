@@ -32,9 +32,9 @@ sub new {
 
 sub password { @_ > 1 ? $_[0]->{password} = $_[1] : $_[0]->{password} }
 
+sub done { shift->state('done') }
 sub state { @_ > 1 ? $_[0]->{state} = $_[1] : $_[0]->{state} }
-
-sub is_done {shift->state =~ /done/}
+sub is_done { shift->state =~ /done/ }
 
 sub encodings { @_ > 1 ? $_[0]->{encodings} = $_[1] : $_[0]->{encodings} }
 

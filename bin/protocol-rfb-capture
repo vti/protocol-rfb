@@ -82,7 +82,7 @@ while (!$socket->connected) {
 
 my $vnc = Protocol::RFB::Client->new(password => $PASSWORD);
 
-$vnc->write_cb(
+$vnc->on_write(
     sub {
         my ($self, $chunk) = @_;
 
@@ -90,7 +90,7 @@ $vnc->write_cb(
     }
 );
 
-$vnc->error_cb(
+$vnc->on_error(
     sub {
         my $self  = shift;
         my $error = shift;
@@ -99,7 +99,7 @@ $vnc->error_cb(
     }
 );
 
-$vnc->handshake_cb(
+$vnc->on_handshake(
     sub {
         my ($self) = @_;
 
@@ -114,7 +114,7 @@ $vnc->handshake_cb(
     }
 );
 
-$vnc->framebuffer_update_cb(
+$vnc->on_framebuffer_update(
     sub {
         my ($self, $message) = @_;
 

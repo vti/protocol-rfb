@@ -24,7 +24,7 @@ sub new {
 
     $self->{state} = 'init';
 
-    $self->{version} ||= '3.7';
+    $self->{version}   ||= '3.7';
     $self->{encodings} ||= [qw/CopyRect Raw/];
 
     return $self;
@@ -40,27 +40,41 @@ sub encodings { @_ > 1 ? $_[0]->{encodings} = $_[1] : $_[0]->{encodings} }
 
 sub width  { @_ > 1 ? $_[0]->{width}  = $_[1] : $_[0]->{width} }
 sub height { @_ > 1 ? $_[0]->{height} = $_[1] : $_[0]->{height} }
-sub pixel_format { @_ > 1 ? $_[0]->{pixel_format} = $_[1] : $_[0]->{pixel_format} }
-sub server_name { @_ > 1 ? $_[0]->{server_name} = $_[1] : $_[0]->{server_name} }
 
-sub handshake_cb {
-    @_ > 1 ? $_[0]->{handshake_cb} = $_[1] : $_[0]->{handshake_cb};
+sub pixel_format {
+    @_ > 1 ? $_[0]->{pixel_format} = $_[1] : $_[0]->{pixel_format};
 }
 
-sub _new_version_message {shift; Protocol::RFB::Message::Version->new(@_)}
-sub _new_security_message {shift; Protocol::RFB::Message::Security->new(@_)}
-sub _new_authentication_message {shift; Protocol::RFB::Message::Authentication->new(@_)}
-sub _new_security_result_message {shift; Protocol::RFB::Message::SecurityResult->new(@_)}
-sub _new_init_message { shift; Protocol::RFB::Message::Init->new(@_); }
-sub _new_server_message {shift; Protocol::RFB::Message::Server->new(@_)}
+sub server_name {
+    @_ > 1 ? $_[0]->{server_name} = $_[1] : $_[0]->{server_name};
+}
 
-sub write_cb { @_ > 1 ? $_[0]->{write_cb} = $_[1] : $_[0]->{write_cb} }
-sub error_cb { @_ > 1 ? $_[0]->{error_cb} = $_[1] : $_[0]->{error_cb} }
+sub on_handshake {
+    @_ > 1 ? $_[0]->{on_handshake} = $_[1] : $_[0]->{on_handshake};
+}
 
-sub framebuffer_update_cb {
+sub _new_version_message  { shift; Protocol::RFB::Message::Version->new(@_) }
+sub _new_security_message { shift; Protocol::RFB::Message::Security->new(@_) }
+
+sub _new_authentication_message {
+    shift;
+    Protocol::RFB::Message::Authentication->new(@_);
+}
+
+sub _new_security_result_message {
+    shift;
+    Protocol::RFB::Message::SecurityResult->new(@_);
+}
+sub _new_init_message   { shift; Protocol::RFB::Message::Init->new(@_); }
+sub _new_server_message { shift; Protocol::RFB::Message::Server->new(@_) }
+
+sub on_write { @_ > 1 ? $_[0]->{on_write} = $_[1] : $_[0]->{on_write} }
+sub on_error { @_ > 1 ? $_[0]->{on_error} = $_[1] : $_[0]->{on_error} }
+
+sub on_framebuffer_update {
     @_ > 1
-      ? $_[0]->{framebuffer_update_cb} = $_[1]
-      : $_[0]->{framebuffer_update_cb};
+      ? $_[0]->{on_framebuffer_update} = $_[1]
+      : $_[0]->{on_framebuffer_update};
 }
 
 sub set_color_map_entries {
@@ -68,22 +82,28 @@ sub set_color_map_entries {
       ? $_[0]->{set_color_map_entries} = $_[1]
       : $_[0]->{set_color_map_entries};
 }
-sub bell_cb { @_ > 1 ? $_[0]->{bell_cb} = $_[1] : $_[0]->{bell_cb} }
+sub on_bell { @_ > 1 ? $_[0]->{on_bell} = $_[1] : $_[0]->{on_bell} }
 
-sub server_cut_text_cb {
+sub on_server_cut_text {
     @_ > 1
-      ? $_[0]->{server_cut_text_cb} = $_[1]
-      : $_[0]->{server_cut_text_cb};
+      ? $_[0]->{on_server_cut_text} = $_[1]
+      : $_[0]->{on_server_cut_text};
+}
+
+sub write {
+    my $self = shift;
+
+    $self->on_write->($self, $_[0]);
 }
 
 sub error {
-    my $self = shift;
+    my $self  = shift;
     my $error = shift;
 
     return $self->{error} unless $error;
 
     $self->{error} = $error;
-    $self->error_cb->($self, $error);
+    $self->on_error->($self, $error);
 
     return $self;
 }
@@ -164,11 +184,11 @@ sub parse {
 
             my $pixel_format = $res->format;
 
-            $self->write_cb->($self, $pixel_format);
+            $self->write($pixel_format);
 
             $self->set_encodings($self->encodings);
 
-            $self->handshake_cb->($self);
+            $self->on_handshake->($self);
 
             return 1;
         }
@@ -176,7 +196,7 @@ sub parse {
         warn '> ' . $req->to_hex . ' (' . $req->name . ')' if DEBUG;
 
         # Send request
-        $self->write_cb->($self, $req->to_string) if $req;
+        $self->write($req->to_string) if $req;
 
         return 1;
     }
@@ -186,7 +206,8 @@ sub parse {
         while (length($chunk) > 0) {
             my $message = $self->{server_message};
             if (!$message || $message->is_done) {
-                $message = $self->{server_message} = $self->_new_server_message(
+                $message = $self->{server_message} =
+                  $self->_new_server_message(
                     pixel_format => $self->pixel_format);
             }
 
@@ -197,7 +218,7 @@ sub parse {
 
             $chunk = length($chunk) > $parsed ? substr($chunk, $parsed) : "";
 
-            my $cb = $message->name . '_cb';
+            my $cb = 'on_' . $message->name;
 
             $self->$cb->($self, $message->submessage) if $self->$cb;
         }
@@ -227,18 +248,17 @@ sub framebuffer_update_request {
         incremental => $incremental || 0
     );
 
-    $self->write_cb->($self, $m->to_string);
+    $self->write($m->to_string);
 }
 
 sub set_encodings {
     my $self = shift;
     my ($encodings) = @_;
 
-    my $m = Protocol::RFB::Message::SetEncodings->new(
-        encodings => $encodings
-    );
+    my $m =
+      Protocol::RFB::Message::SetEncodings->new(encodings => $encodings);
 
-    $self->write_cb->($self, $m->to_string);
+    $self->write($m->to_string);
 }
 
 sub pointer_event {
@@ -251,7 +271,7 @@ sub pointer_event {
         button_mask => $mask
     );
 
-    $self->write_cb->($self, $m->to_string);
+    $self->write($m->to_string);
 }
 
 1;

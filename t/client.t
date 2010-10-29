@@ -9,8 +9,8 @@ use_ok('Protocol::RFB::Client');
 
 my $client = Protocol::RFB::Client->new(password => '123');
 
-$client->handshake_cb(sub { });
-$client->write_cb(sub { });
+$client->on_handshake(sub { });
+$client->on_write(sub { });
 
 # Server sends version
 $client->parse("RFB 003.007\x0a");
@@ -51,7 +51,7 @@ ok($client->parse(substr($update, 5) . substr($update, 0, 3)));
 ok($client->parse(substr($update, 3)));
 
 # Server sends framebuffer update with CopyRect encoding
-$client->framebuffer_update_cb(
+$client->on_framebuffer_update(
     sub { is_deeply($_[1]->rectangles->[0]->{data}, [128, 255]) });
 $update = pack('CCnnnnnNnn', 0, 0, 1, 5, 14, 1, 1, 1, 128, 255);
 ok($client->parse($update));

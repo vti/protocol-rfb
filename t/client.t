@@ -3,13 +3,14 @@
 use strict;
 use warnings;
 
-use Test::More tests => 18;
+use Test::More tests => 19;
 
 use_ok('Protocol::RFB::Client');
 
 my $client = Protocol::RFB::Client->new(password => '123');
 
-$client->on_handshake(sub { });
+my $on_handshake;
+$client->on_handshake(sub { $on_handshake = 1 });
 $client->on_write(sub { });
 
 # Server sends version
@@ -43,7 +44,8 @@ is($client->state, 'ready');
 ok($client->parse(pack('C', 2)));
 
 # Server sends framebuffer update with Raw encoding
-my $update = pack('CCnnnnnNCCCC', 0, 0, 1, 5, 14, 1, 1, 0, 128, 255, 128, 255);
+my $update =
+  pack('CCnnnnnNCCCC', 0, 0, 1, 5, 14, 1, 1, 0, 128, 255, 128, 255);
 ok($client->parse($update . $update . $update));
 
 ok($client->parse(substr($update, 0, 5)));
@@ -55,3 +57,5 @@ $client->on_framebuffer_update(
     sub { is_deeply($_[1]->rectangles->[0]->{data}, [128, 255]) });
 $update = pack('CCnnnnnNnn', 0, 0, 1, 5, 14, 1, 1, 1, 128, 255);
 ok($client->parse($update));
+
+ok($on_handshake);

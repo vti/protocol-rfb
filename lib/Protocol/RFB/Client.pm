@@ -5,16 +5,8 @@ use warnings;
 
 use constant DEBUG => $ENV{PROTOCOL_RFB_DEBUG} ? 1 : 0;
 
-use Protocol::RFB::Message::Version;
-use Protocol::RFB::Message::Security;
-use Protocol::RFB::Message::Authentication;
-use Protocol::RFB::Message::SecurityResult;
-use Protocol::RFB::Message::Init;
-
-use Protocol::RFB::Message::Server;
-use Protocol::RFB::Message::FramebufferUpdateRequest;
-use Protocol::RFB::Message::SetEncodings;
-use Protocol::RFB::Message::PointerEvent;
+use Protocol::RFB::Handshake;
+use Protocol::RFB::MessageFactory;
 
 sub new {
     my $class = shift;
@@ -27,15 +19,21 @@ sub new {
     $self->{version}   ||= '3.7';
     $self->{encodings} ||= [qw/CopyRect Raw/];
 
+    $self->{handshake} = Protocol::RFB::Handshake->new;
+
     return $self;
 }
 
-sub password { @_ > 1 ? $_[0]->{password} = $_[1] : $_[0]->{password} }
+sub handshake { shift->{handshake} }
+
+sub _build_message { shift; Protocol::RFB::MessageFactory->build(@_) }
 
 sub done { shift->state('done') }
-sub state { @_ > 1 ? $_[0]->{state} = $_[1] : $_[0]->{state} }
 sub is_done { shift->state =~ /done/ }
 
+sub password { @_ > 1 ? $_[0]->{password} = $_[1] : $_[0]->{password} }
+
+sub state     { @_ > 1 ? $_[0]->{state}     = $_[1] : $_[0]->{state} }
 sub encodings { @_ > 1 ? $_[0]->{encodings} = $_[1] : $_[0]->{encodings} }
 
 sub width  { @_ > 1 ? $_[0]->{width}  = $_[1] : $_[0]->{width} }
@@ -52,21 +50,6 @@ sub server_name {
 sub on_handshake {
     @_ > 1 ? $_[0]->{on_handshake} = $_[1] : $_[0]->{on_handshake};
 }
-
-sub _new_version_message  { shift; Protocol::RFB::Message::Version->new(@_) }
-sub _new_security_message { shift; Protocol::RFB::Message::Security->new(@_) }
-
-sub _new_authentication_message {
-    shift;
-    Protocol::RFB::Message::Authentication->new(@_);
-}
-
-sub _new_security_result_message {
-    shift;
-    Protocol::RFB::Message::SecurityResult->new(@_);
-}
-sub _new_init_message   { shift; Protocol::RFB::Message::Init->new(@_); }
-sub _new_server_message { shift; Protocol::RFB::Message::Server->new(@_) }
 
 sub on_write { @_ > 1 ? $_[0]->{on_write} = $_[1] : $_[0]->{on_write} }
 sub on_error { @_ > 1 ? $_[0]->{on_error} = $_[1] : $_[0]->{on_error} }
@@ -109,8 +92,8 @@ sub error {
 }
 
 sub parse {
-    my $self = shift;
-    my ($chunk) = @_;
+    my $self  = shift;
+    my $chunk = shift;
 
     warn '< ' . unpack 'h*' => $chunk if DEBUG;
 
@@ -119,133 +102,101 @@ sub parse {
 
         $self->state('handshake');
 
-        $self->{handshake_res} = $self->_new_version_message;
-    }
+        $self->handshake->init(password => $self->password);
 
-    my $state = $self->state;
-
-    if ($state eq 'handshake') {
         warn 'Handshake state' if DEBUG;
-
-        my $res = $self->{handshake_res};
-
-        # Error
-        return unless $res->parse($chunk);
-
-        # Wait
-        return 1 unless $res->is_done;
-
-        my $req;
-        my $res_name = $res->name;
-        if ($res_name eq 'version') {
-            warn 'Received version' if DEBUG;
-
-            $req = $self->_new_version_message(major => 3, minor => 7);
-            $self->{handshake_res} = $self->_new_security_message;
-        }
-        elsif ($res_name eq 'security') {
-            warn 'Received security type' if DEBUG;
-
-            # Check what kind of security is available
-            $req = $self->_new_security_message(type => 2);
-            $self->{handshake_res} = $self->_new_authentication_message;
-        }
-        elsif ($res_name eq 'authentication') {
-            warn 'Received authentication' if DEBUG;
-
-            $req = $self->_new_authentication_message(
-                challenge => $res->challenge,
-                password  => $self->password
-            );
-            $self->{handshake_res} = $self->_new_security_result_message;
-        }
-        elsif ($res_name eq 'security_result') {
-            warn 'Received security result' if DEBUG;
-
-            return $self->error($res->error) if $res->error;
-
-            # Initialization
-            $req = $self->_new_init_message;
-            $self->{handshake_res} = $self->_new_init_message;
-        }
-        elsif ($res_name eq 'init') {
-            warn 'Received settings' if DEBUG;
-
-            delete $self->{handshake_res};
-
-            $self->width($res->width);
-            $self->height($res->height);
-
-            $self->server_name($res->server_name);
-
-            $self->pixel_format($res->format);
-
-            $self->state('ready');
-
-            my $pixel_format = $res->format;
-
-            $self->write($pixel_format);
-
-            $self->set_encodings($self->encodings);
-
-            $self->on_handshake->($self);
-
-            return 1;
-        }
-
-        warn '> ' . $req->to_hex . ' (' . $req->name . ')' if DEBUG;
-
-        # Send request
-        $self->write($req->to_string) if $req;
-
-        return 1;
     }
 
-    # Message from server
-    elsif ($state eq 'ready') {
-        while (length($chunk) > 0) {
-            my $message = $self->{server_message};
-            if (!$message || $message->is_done) {
-                $message = $self->{server_message} =
-                  $self->_new_server_message(
-                    pixel_format => $self->pixel_format);
-            }
+    return $self->_parse_handshake($chunk) if $self->state eq 'handshake';
 
-            my $parsed = $message->parse($chunk);
-            return unless defined $parsed;
+    return $self->_parse_server_message($chunk) if $self->state eq 'ready';
 
-            return 1 unless $message->is_done;
-
-            $chunk = length($chunk) > $parsed ? substr($chunk, $parsed) : "";
-
-            my $cb = 'on_' . $message->name;
-
-            $self->$cb->($self, $message->submessage) if $self->$cb;
-        }
-
-        #$self->framebuffer_update_request(10, 10, 100, 100, 1);
-
-        return 1;
-    }
-
-    else {
-        warn "Unknown message from server";
-        return 1;
-    }
+    warn "Unknown state";
 
     return;
+}
+
+sub _parse_handshake {
+    my $self  = shift;
+    my $chunk = shift;
+
+    my $handshake = $self->handshake;
+
+    # Error
+    return unless $handshake->parse($chunk);
+
+    # Wait
+    return 1 if $handshake->need_more_data;
+
+    # Send request
+    unless ($handshake->is_done) {
+        warn '> '
+          . $handshake->req->to_hex . ' ('
+          . $handshake->req->name . ')'
+          if DEBUG;
+
+        $self->write($handshake->req->to_string);
+        return 1;
+    }
+
+    $self->width($handshake->width);
+    $self->height($handshake->height);
+
+    $self->server_name($handshake->server_name);
+
+    $self->pixel_format($handshake->format);
+
+    $self->state('ready');
+
+    my $pixel_format = $handshake->format;
+
+    $self->write($pixel_format);
+
+    $self->set_encodings($self->encodings);
+
+    $self->on_handshake->($self);
+
+    return 1;
+}
+
+sub _parse_server_message {
+    my $self  = shift;
+    my $chunk = shift;
+
+    while (length($chunk) > 0) {
+        my $message = $self->{server_message};
+        if (!$message || $message->is_done) {
+            $message = $self->{server_message} = $self->_build_message(
+                server => (pixel_format => $self->pixel_format));
+        }
+
+        my $parsed = $message->parse($chunk);
+        return unless defined $parsed;
+
+        return 1 unless $message->is_done;
+
+        $chunk = length($chunk) > $parsed ? substr($chunk, $parsed) : "";
+
+        my $cb = 'on_' . $message->name;
+
+        $self->$cb->($self, $message->submessage) if $self->$cb;
+    }
+
+    return 1;
 }
 
 sub framebuffer_update_request {
     my $self = shift;
     my ($x, $y, $width, $height, $incremental) = @_;
 
-    my $m = Protocol::RFB::Message::FramebufferUpdateRequest->new(
-        x           => $x,
-        y           => $y,
-        width       => $width,
-        height      => $height,
-        incremental => $incremental || 0
+    my $m = $self->_build_message(
+        framebuffer_update_request => (
+            x           => $x,
+            y           => $y,
+            width       => $width,
+            height      => $height,
+            incremental => $incremental || 0
+        )
     );
 
     $self->write($m->to_string);
@@ -255,8 +206,7 @@ sub set_encodings {
     my $self = shift;
     my ($encodings) = @_;
 
-    my $m =
-      Protocol::RFB::Message::SetEncodings->new(encodings => $encodings);
+    my $m = $self->_build_message(set_encodings => (encodings => $encodings));
 
     $self->write($m->to_string);
 }
@@ -265,10 +215,12 @@ sub pointer_event {
     my $self = shift;
     my ($x, $y, $mask) = @_;
 
-    my $m = Protocol::RFB::Message::PointerEvent->new(
-        x           => $x,
-        y           => $y,
-        button_mask => $mask
+    my $m = $self->_build_message(
+        pointer_event => (
+            x           => $x,
+            y           => $y,
+            button_mask => $mask
+        )
     );
 
     $self->write($m->to_string);
